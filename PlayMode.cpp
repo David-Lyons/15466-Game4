@@ -36,90 +36,60 @@ Load< Scene > hexapod_scene(LoadTagDefault, []() -> Scene const * {
 	});
 });
 
-Load< Sound::Sample > dusty_floor_sample(LoadTagDefault, []() -> Sound::Sample const * {
-	return new Sound::Sample(data_path("dusty-floor.opus"));
-});
+void PlayMode::render_at(std::string txt, uint32_t x, uint32_t y) {
+	hb_buffer_t* hb_buffer;
+	hb_buffer = hb_buffer_create();
+	hb_buffer_add_utf8(hb_buffer, txt.c_str(), -1, 0, -1);
+	hb_buffer_guess_segment_properties(hb_buffer);
+	hb_shape(hb_font, hb_buffer, NULL, 0);
+
+	glm::vec2 cursor = glm::vec2(x, y);
+	unsigned int len = hb_buffer_get_length(hb_buffer);
+	hb_glyph_info_t* glyph_infos = hb_buffer_get_glyph_infos(hb_buffer, NULL);
+	hb_glyph_position_t* glyph_positions = hb_buffer_get_glyph_positions(hb_buffer, NULL);
+
+	for (uint32_t i = 0; i < len; i++) {
+		hb_codepoint_t glyph_index = glyph_infos[i].codepoint;
+		FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_DEFAULT);
+		FT_Render_Glyph(ft_face->glyph, FT_RENDER_MODE_NORMAL);
+		// Somehow draw this to the screen at cursor+xoffset, cursor+yoffset
+		// Potentially line wrap if cursor.x is too big
+		cursor += glm::vec2(glyph_positions[i].x_advance, glyph_positions[i].y_advance);
+	}
+}
 
 PlayMode::PlayMode() : scene(*hexapod_scene) {
-	//get pointers to leg for convenience:
-	for (auto &transform : scene.transforms) {
-		if (transform.name == "Hip.FL") hip = &transform;
-		else if (transform.name == "UpperLeg.FL") upper_leg = &transform;
-		else if (transform.name == "LowerLeg.FL") lower_leg = &transform;
-	}
-	if (hip == nullptr) throw std::runtime_error("Hip not found.");
-	if (upper_leg == nullptr) throw std::runtime_error("Upper leg not found.");
-	if (lower_leg == nullptr) throw std::runtime_error("Lower leg not found.");
-
-	hip_base_rotation = hip->rotation;
-	upper_leg_base_rotation = upper_leg->rotation;
-	lower_leg_base_rotation = lower_leg->rotation;
-
 	//get pointer to camera for convenience:
 	if (scene.cameras.size() != 1) throw std::runtime_error("Expecting scene to have exactly one camera, but it has " + std::to_string(scene.cameras.size()));
 	camera = &scene.cameras.front();
 
-	//start music loop playing:
-	// (note: position will be over-ridden in update())
-	leg_tip_loop = Sound::loop_3D(*dusty_floor_sample, 1.0f, get_leg_tip_position(), 10.0f);
+	FT_Init_FreeType(&ft_library);
+	FT_New_Face(ft_library, data_path("PTSerif-Italic.ttf").c_str(), 0, &ft_face);
+	hb_font = hb_ft_font_create(ft_face, NULL);
+
+	current_choice = Choice::NONE;
+	current_location = Location::PRISON;
+	items.clear();
+	message = IN_PRISON_MESSAGE;
+	left_choice = DIG_TUNNEL_CHOICE;
+	right_choice = CALL_GUARD_CHOICE;
+	result = DEFAULT_RESULT;
 }
 
 PlayMode::~PlayMode() {
 }
 
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
+	if (current_choice != Choice::NONE) {
+		return false;
+	}
 
 	if (evt.type == SDL_KEYDOWN) {
-		if (evt.key.keysym.sym == SDLK_ESCAPE) {
-			SDL_SetRelativeMouseMode(SDL_FALSE);
+		if (evt.key.keysym.sym == SDLK_LEFT) {
+			current_choice = Choice::LEFT;
 			return true;
-		} else if (evt.key.keysym.sym == SDLK_a) {
-			left.downs += 1;
-			left.pressed = true;
-			return true;
-		} else if (evt.key.keysym.sym == SDLK_d) {
-			right.downs += 1;
-			right.pressed = true;
-			return true;
-		} else if (evt.key.keysym.sym == SDLK_w) {
-			up.downs += 1;
-			up.pressed = true;
-			return true;
-		} else if (evt.key.keysym.sym == SDLK_s) {
-			down.downs += 1;
-			down.pressed = true;
-			return true;
-		}
-	} else if (evt.type == SDL_KEYUP) {
-		if (evt.key.keysym.sym == SDLK_a) {
-			left.pressed = false;
-			return true;
-		} else if (evt.key.keysym.sym == SDLK_d) {
-			right.pressed = false;
-			return true;
-		} else if (evt.key.keysym.sym == SDLK_w) {
-			up.pressed = false;
-			return true;
-		} else if (evt.key.keysym.sym == SDLK_s) {
-			down.pressed = false;
-			return true;
-		}
-	} else if (evt.type == SDL_MOUSEBUTTONDOWN) {
-		if (SDL_GetRelativeMouseMode() == SDL_FALSE) {
-			SDL_SetRelativeMouseMode(SDL_TRUE);
-			return true;
-		}
-	} else if (evt.type == SDL_MOUSEMOTION) {
-		if (SDL_GetRelativeMouseMode() == SDL_TRUE) {
-			glm::vec2 motion = glm::vec2(
-				evt.motion.xrel / float(window_size.y),
-				-evt.motion.yrel / float(window_size.y)
-			);
-			camera->transform->rotation = glm::normalize(
-				camera->transform->rotation
-				* glm::angleAxis(-motion.x * camera->fovy, glm::vec3(0.0f, 1.0f, 0.0f))
-				* glm::angleAxis(motion.y * camera->fovy, glm::vec3(1.0f, 0.0f, 0.0f))
-			);
+		} else if (evt.key.keysym.sym == SDLK_RIGHT) {
+			current_choice = Choice::RIGHT;
 			return true;
 		}
 	}
@@ -128,61 +98,145 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 }
 
 void PlayMode::update(float elapsed) {
-
-	//slowly rotates through [0,1):
-	wobble += elapsed / 10.0f;
-	wobble -= std::floor(wobble);
-
-	hip->rotation = hip_base_rotation * glm::angleAxis(
-		glm::radians(5.0f * std::sin(wobble * 2.0f * float(M_PI))),
-		glm::vec3(0.0f, 1.0f, 0.0f)
-	);
-	upper_leg->rotation = upper_leg_base_rotation * glm::angleAxis(
-		glm::radians(7.0f * std::sin(wobble * 2.0f * 2.0f * float(M_PI))),
-		glm::vec3(0.0f, 0.0f, 1.0f)
-	);
-	lower_leg->rotation = lower_leg_base_rotation * glm::angleAxis(
-		glm::radians(10.0f * std::sin(wobble * 3.0f * 2.0f * float(M_PI))),
-		glm::vec3(0.0f, 0.0f, 1.0f)
-	);
-
-	//move sound to follow leg tip position:
-	leg_tip_loop->set_position(get_leg_tip_position(), 1.0f / 60.0f);
-
-	//move camera:
-	{
-
-		//combine inputs into a move:
-		constexpr float PlayerSpeed = 30.0f;
-		glm::vec2 move = glm::vec2(0.0f);
-		if (left.pressed && !right.pressed) move.x =-1.0f;
-		if (!left.pressed && right.pressed) move.x = 1.0f;
-		if (down.pressed && !up.pressed) move.y =-1.0f;
-		if (!down.pressed && up.pressed) move.y = 1.0f;
-
-		//make it so that moving diagonally doesn't go faster:
-		if (move != glm::vec2(0.0f)) move = glm::normalize(move) * PlayerSpeed * elapsed;
-
-		glm::mat4x3 frame = camera->transform->make_local_to_parent();
-		glm::vec3 frame_right = frame[0];
-		//glm::vec3 up = frame[1];
-		glm::vec3 frame_forward = -frame[2];
-
-		camera->transform->position += move.x * frame_right + move.y * frame_forward;
+	if (current_choice == Choice::NONE) {
+		return;
 	}
-
-	{ //update listener to camera position:
-		glm::mat4x3 frame = camera->transform->make_local_to_parent();
-		glm::vec3 frame_right = frame[0];
-		glm::vec3 frame_at = frame[3];
-		Sound::listener.set_position_right(frame_at, frame_right, 1.0f / 60.0f);
+	switch (current_location) {
+	case PRISON:
+		if (current_choice == Choice::LEFT) {
+			if (left_choice == DIG_TUNNEL_CHOICE) {
+				left_choice = LOOK_AROUND_CHOICE;
+				result = NO_ITEM_RESULT;
+			} else if (left_choice == LOOK_AROUND_CHOICE) {
+				if (past_guard) {
+					left_choice = TRY_RIGHT_CHOICE;
+				} else {
+					left_choice = GIVE_UP_CHOICE;
+				}
+				items.insert(Item::ROCK);
+				result = LOOK_AROUND_RESULT;
+			} else if (left_choice == ASK_NICELY_CHOICE) {
+				message = NO_CHOICE;
+				left_choice = NO_CHOICE;
+				right_choice = NO_CHOICE;
+				result = GUARD_LEAVES_RESULT;
+			} else if (left_choice == TRY_RIGHT_CHOICE) {
+				current_location = Location::GUARDS;
+				message = NEAR_GUARDS_MESSAGE;
+				left_choice = CHARGE_CHOICE;
+				right_choice = DISTRACTION_CHOICE;
+				result = RIGHT_TURN_RESULT;
+			} else if (left_choice == GIVE_UP_CHOICE) {
+				message = NO_CHOICE;
+				left_choice = NO_CHOICE;
+				right_choice = NO_CHOICE;
+				result = GIVE_UP_RESULT;
+			}
+		} else if (current_choice == Choice::RIGHT) {
+			if (right_choice == CALL_GUARD_CHOICE) {
+				left_choice = ASK_NICELY_CHOICE;
+				if (items.find(Item::ROCK) != items.end()) {
+					right_choice = USE_ROCK_CHOICE;
+				} else {
+					right_choice = ATTACK_GUARD_CHOICE;
+				}
+				result = CALL_GUARD_RESULT;
+			} else if (right_choice == ATTACK_GUARD_CHOICE || right_choice == USE_ROCK_CHOICE) {
+				past_guard = true;
+				current_location = Location::DUNGEON;
+				message = DUNGEON_MESSAGE;
+				left_choice = TURN_LEFT_CHOICE;
+				right_choice = TURN_RIGHT_CHOICE;
+				result = KNOCK_OUT_RESULT;
+				items.erase(Item::ROCK);
+			} else if (right_choice == TRY_LEFT_CHOICE) {
+				current_location = Location::TABLE;
+				message = AT_TABLE_MESSAGE;
+				left_choice = TRY_RIGHT_CHOICE;
+				right_choice = CELL_RETURN_CHOICE;
+				result = LEFT_TURN_RESULT;
+			}
+		}
+		break;
+	case DUNGEON:
+		if (current_choice == Choice::LEFT) {
+			current_location = Location::TABLE;
+			message = AT_TABLE_MESSAGE;
+			left_choice = TRY_RIGHT_CHOICE;
+			right_choice = CELL_RETURN_CHOICE;
+			result = LEFT_TURN_RESULT;
+		} else if (current_choice == Choice::RIGHT) {
+			current_location = Location::GUARDS;
+			message = NEAR_GUARDS_MESSAGE;
+			left_choice = CHARGE_CHOICE;
+			right_choice = DISTRACTION_CHOICE;
+			result = RIGHT_TURN_RESULT;
+		}
+		break;
+	case TABLE:
+		items.insert(Item::SWORD);
+		items.insert(Item::SHOVEL);
+		if (current_choice == Choice::LEFT) {
+			current_location = Location::GUARDS;
+			message = NEAR_GUARDS_MESSAGE;
+			left_choice = CHARGE_CHOICE;
+			right_choice = DISTRACTION_CHOICE;
+			result = RIGHT_TURN_RESULT;
+		} else if (current_choice == Choice::RIGHT) {
+			current_location = Location::COAST;
+			message = COAST_MESSAGE;
+			left_choice = NO_CHOICE;
+			right_choice = NO_CHOICE;
+			result = LEFT_CELL_RESULT;
+			items.erase(Item::SHOVEL);
+		}
+		break;
+	case GUARDS:
+		if (current_choice == Choice::LEFT) {
+			if (items.find(Item::SWORD) != items.end()) {
+				injured = true;
+				current_location = Location::COAST;
+				message = COAST_MESSAGE;
+				left_choice = NO_CHOICE;
+				right_choice = NO_CHOICE;
+				result = FIGHT_SWORD_RESULT;
+			} else {
+				message = NO_CHOICE;
+				left_choice = NO_CHOICE;
+				right_choice = NO_CHOICE;
+				result = FIGHT_NO_SWORD_RESULT;
+			}
+		} else if (current_choice == Choice::RIGHT) {
+			if (right_choice == DISTRACTION_CHOICE) {
+				if (items.find(Item::SHOVEL) != items.end()) {
+					current_location = Location::COAST;
+					message = COAST_MESSAGE;
+					left_choice = NO_CHOICE;
+					right_choice = NO_CHOICE;
+					result = DISTRACTION_SHOVEL_RESULT;
+					items.erase(Item::SHOVEL);
+				} else if (items.find(Item::ROCK) != items.end()) {
+					current_location = Location::COAST;
+					message = COAST_MESSAGE;
+					left_choice = NO_CHOICE;
+					right_choice = NO_CHOICE;
+					result = DISTRACTION_ROCK_RESULT;
+					items.erase(Item::ROCK);
+				} else {
+					right_choice = CELL_RETURN_CHOICE;
+					result = NO_ITEM_RESULT;
+				}
+			} else if (right_choice == CELL_RETURN_CHOICE) {
+				current_location = Location::PRISON;
+				message = IN_PRISON_MESSAGE;
+				left_choice = LOOK_AROUND_CHOICE;
+				right_choice = TRY_LEFT_CHOICE;
+				result = RIGHT_CELL_RESULT;
+			}
+		}
+		break;
 	}
-
-	//reset button press counters:
-	left.downs = 0;
-	right.downs = 0;
-	up.downs = 0;
-	down.downs = 0;
+	current_choice = Choice::NONE;
 }
 
 void PlayMode::draw(glm::uvec2 const &drawable_size) {
@@ -190,7 +244,6 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	camera->aspect = float(drawable_size.x) / float(drawable_size.y);
 
 	//set up light type and position for lit_color_texture_program:
-	// TODO: consider using the Light(s) in the scene to do this
 	glUseProgram(lit_color_texture_program->program);
 	glUniform1i(lit_color_texture_program->LIGHT_TYPE_int, 1);
 	glUniform3fv(lit_color_texture_program->LIGHT_DIRECTION_vec3, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f,-1.0f)));
@@ -216,21 +269,23 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			0.0f, 0.0f, 0.0f, 1.0f
 		));
 
-		constexpr float H = 0.09f;
-		lines.draw_text("Mouse motion rotates camera; WASD moves; escape ungrabs mouse",
-			glm::vec3(-aspect + 0.1f * H, -1.0 + 0.1f * H, 0.0),
+		constexpr float H = 0.1f;
+		lines.draw_text(message,
+			glm::vec3(-aspect + 0.1f * H, -1.0 + 0.1f * H + 1200.0f / drawable_size.y, 0.0),
 			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
-			glm::u8vec4(0x00, 0x00, 0x00, 0x00));
-		float ofs = 2.0f / drawable_size.y;
-		lines.draw_text("Mouse motion rotates camera; WASD moves; escape ungrabs mouse",
-			glm::vec3(-aspect + 0.1f * H + ofs, -1.0 + + 0.1f * H + ofs, 0.0),
+			glm::u8vec4(0xff, 0xff, 0xff, 0xff)); 
+		lines.draw_text(left_choice,
+				glm::vec3(-aspect + 0.1f * H, -1.0 + 0.1f * H + 1000.0f / drawable_size.y, 0.0),
+				glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
+				glm::u8vec4(0xff, 0xff, 0xff, 0xff));
+		lines.draw_text(right_choice,
+			glm::vec3(-aspect + 0.1f * H + 1000.0f / drawable_size.x, -1.0 + 0.1f * H + 1000.0f / drawable_size.y, 0.0),
 			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
-			glm::u8vec4(0xff, 0xff, 0xff, 0x00));
+			glm::u8vec4(0xff, 0xff, 0xff, 0xff));
+		lines.draw_text(result,
+			glm::vec3(-aspect + 0.1f * H, -1.0 + 0.1f * H + 100.0f / drawable_size.y, 0.0),
+			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
+			glm::u8vec4(0xff, 0xff, 0xff, 0xff));
 	}
 	GL_ERRORS();
-}
-
-glm::vec3 PlayMode::get_leg_tip_position() {
-	//the vertex position here was read from the model in blender:
-	return lower_leg->make_local_to_world() * glm::vec4(-1.26137f, -11.861f, 0.0f, 1.0f);
 }
