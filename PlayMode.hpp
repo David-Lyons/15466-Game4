@@ -24,8 +24,14 @@ struct PlayMode : Mode {
 
 	//----- game state -----
 
-	//local copy of the game scene (so code can change it during gameplay):
+	// Scene/cameras
 	Scene scene;
+	Scene::Camera* prison_camera = nullptr;
+	Scene::Camera* coast_camera = nullptr;
+	Scene::Camera* table_camera = nullptr;
+	Scene::Camera* dungeon_camera = nullptr;
+	Scene::Camera* guard_camera = nullptr;
+	Scene::Camera* camera = nullptr;
 
 	// Text shaping
 	FT_Library ft_library;
@@ -106,9 +112,4 @@ struct PlayMode : Mode {
 	std::string DISTRACTION_ROCK_RESULT = "You throw the rock and sneak by the guards.";
 	std::string FIGHT_NO_SWORD_RESULT = "You die. Game over.";
 	std::string FIGHT_SWORD_RESULT = "You use the sword to beat them, but now you're injured.";
-
-	
-	//camera:
-	Scene::Camera *camera = nullptr;
-
 };

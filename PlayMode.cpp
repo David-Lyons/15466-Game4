@@ -12,23 +12,23 @@
 
 #include <random>
 
-GLuint hexapod_meshes_for_lit_color_texture_program = 0;
-Load< MeshBuffer > hexapod_meshes(LoadTagDefault, []() -> MeshBuffer const * {
-	MeshBuffer const *ret = new MeshBuffer(data_path("hexapod.pnct"));
-	hexapod_meshes_for_lit_color_texture_program = ret->make_vao_for_program(lit_color_texture_program->program);
+GLuint meshes_for_lit_color_texture_program = 0;
+Load< MeshBuffer > meshes(LoadTagDefault, []() -> MeshBuffer const * {
+	MeshBuffer const *ret = new MeshBuffer(data_path("sets.pnct"));
+	meshes_for_lit_color_texture_program = ret->make_vao_for_program(lit_color_texture_program->program);
 	return ret;
 });
 
-Load< Scene > hexapod_scene(LoadTagDefault, []() -> Scene const * {
-	return new Scene(data_path("hexapod.scene"), [&](Scene &scene, Scene::Transform *transform, std::string const &mesh_name){
-		Mesh const &mesh = hexapod_meshes->lookup(mesh_name);
+Load< Scene > sets(LoadTagDefault, []() -> Scene const * {
+	return new Scene(data_path("sets.scene"), [&](Scene &scene, Scene::Transform *transform, std::string const &mesh_name){
+		Mesh const &mesh = meshes->lookup(mesh_name);
 
 		scene.drawables.emplace_back(transform);
 		Scene::Drawable &drawable = scene.drawables.back();
 
 		drawable.pipeline = lit_color_texture_program_pipeline;
 
-		drawable.pipeline.vao = hexapod_meshes_for_lit_color_texture_program;
+		drawable.pipeline.vao = meshes_for_lit_color_texture_program;
 		drawable.pipeline.type = mesh.type;
 		drawable.pipeline.start = mesh.start;
 		drawable.pipeline.count = mesh.count;
@@ -58,10 +58,28 @@ void PlayMode::render_at(std::string txt, uint32_t x, uint32_t y) {
 	}
 }
 
-PlayMode::PlayMode() : scene(*hexapod_scene) {
+PlayMode::PlayMode() : scene(*sets) {
 	//get pointer to camera for convenience:
-	if (scene.cameras.size() != 1) throw std::runtime_error("Expecting scene to have exactly one camera, but it has " + std::to_string(scene.cameras.size()));
-	camera = &scene.cameras.front();
+	int camera_number = 0;
+	for (auto& cmra : scene.cameras) {
+		if (camera_number == 0) {
+			prison_camera = &cmra;
+		}
+		if (camera_number == 1) {
+			coast_camera = &cmra;
+		}
+		if (camera_number == 2) {
+			table_camera = &cmra;
+		}
+		if (camera_number == 3) {
+			dungeon_camera = &cmra;
+		}
+		if (camera_number == 4) {
+			guard_camera = &cmra;
+		}
+		camera_number++;
+	}
+	camera = prison_camera;
 
 	FT_Init_FreeType(&ft_library);
 	FT_New_Face(ft_library, data_path("PTSerif-Italic.ttf").c_str(), 0, &ft_face);
@@ -122,6 +140,7 @@ void PlayMode::update(float elapsed) {
 				result = GUARD_LEAVES_RESULT;
 			} else if (left_choice == TRY_RIGHT_CHOICE) {
 				current_location = Location::GUARDS;
+				camera = guard_camera;
 				message = NEAR_GUARDS_MESSAGE;
 				left_choice = CHARGE_CHOICE;
 				right_choice = DISTRACTION_CHOICE;
@@ -144,6 +163,7 @@ void PlayMode::update(float elapsed) {
 			} else if (right_choice == ATTACK_GUARD_CHOICE || right_choice == USE_ROCK_CHOICE) {
 				past_guard = true;
 				current_location = Location::DUNGEON;
+				camera = dungeon_camera;
 				message = DUNGEON_MESSAGE;
 				left_choice = TURN_LEFT_CHOICE;
 				right_choice = TURN_RIGHT_CHOICE;
@@ -151,6 +171,7 @@ void PlayMode::update(float elapsed) {
 				items.erase(Item::ROCK);
 			} else if (right_choice == TRY_LEFT_CHOICE) {
 				current_location = Location::TABLE;
+				camera = table_camera;
 				message = AT_TABLE_MESSAGE;
 				left_choice = TRY_RIGHT_CHOICE;
 				right_choice = CELL_RETURN_CHOICE;
@@ -161,12 +182,14 @@ void PlayMode::update(float elapsed) {
 	case DUNGEON:
 		if (current_choice == Choice::LEFT) {
 			current_location = Location::TABLE;
+			camera = table_camera;
 			message = AT_TABLE_MESSAGE;
 			left_choice = TRY_RIGHT_CHOICE;
 			right_choice = CELL_RETURN_CHOICE;
 			result = LEFT_TURN_RESULT;
 		} else if (current_choice == Choice::RIGHT) {
 			current_location = Location::GUARDS;
+			camera = guard_camera;
 			message = NEAR_GUARDS_MESSAGE;
 			left_choice = CHARGE_CHOICE;
 			right_choice = DISTRACTION_CHOICE;
@@ -178,12 +201,14 @@ void PlayMode::update(float elapsed) {
 		items.insert(Item::SHOVEL);
 		if (current_choice == Choice::LEFT) {
 			current_location = Location::GUARDS;
+			camera = guard_camera;
 			message = NEAR_GUARDS_MESSAGE;
 			left_choice = CHARGE_CHOICE;
 			right_choice = DISTRACTION_CHOICE;
 			result = RIGHT_TURN_RESULT;
 		} else if (current_choice == Choice::RIGHT) {
 			current_location = Location::COAST;
+			camera = coast_camera;
 			message = COAST_MESSAGE;
 			left_choice = NO_CHOICE;
 			right_choice = NO_CHOICE;
@@ -196,6 +221,7 @@ void PlayMode::update(float elapsed) {
 			if (items.find(Item::SWORD) != items.end()) {
 				injured = true;
 				current_location = Location::COAST;
+				camera = coast_camera;
 				message = COAST_MESSAGE;
 				left_choice = NO_CHOICE;
 				right_choice = NO_CHOICE;
@@ -210,6 +236,7 @@ void PlayMode::update(float elapsed) {
 			if (right_choice == DISTRACTION_CHOICE) {
 				if (items.find(Item::SHOVEL) != items.end()) {
 					current_location = Location::COAST;
+					camera = coast_camera;
 					message = COAST_MESSAGE;
 					left_choice = NO_CHOICE;
 					right_choice = NO_CHOICE;
@@ -217,6 +244,7 @@ void PlayMode::update(float elapsed) {
 					items.erase(Item::SHOVEL);
 				} else if (items.find(Item::ROCK) != items.end()) {
 					current_location = Location::COAST;
+					camera = coast_camera;
 					message = COAST_MESSAGE;
 					left_choice = NO_CHOICE;
 					right_choice = NO_CHOICE;
@@ -228,6 +256,7 @@ void PlayMode::update(float elapsed) {
 				}
 			} else if (right_choice == CELL_RETURN_CHOICE) {
 				current_location = Location::PRISON;
+				camera = prison_camera;
 				message = IN_PRISON_MESSAGE;
 				left_choice = LOOK_AROUND_CHOICE;
 				right_choice = TRY_LEFT_CHOICE;
@@ -258,6 +287,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	glDepthFunc(GL_LESS); //this is the default depth comparison function, but FYI you can change it.
 
 	scene.draw(*camera);
+	render_at(message, 0, 0);
 
 	{ //use DrawLines to overlay some text:
 		glDisable(GL_DEPTH_TEST);
