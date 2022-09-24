@@ -77,6 +77,27 @@ PlayMode::PlayMode() : scene(*sets) {
 		if (camera_number == 4) {
 			guard_camera = &cmra;
 		}
+		if (camera_number == 5) {
+			raft_camera = &cmra;
+		}
+		if (camera_number == 6) {
+			deeper_forest_camera = &cmra;
+		}
+		if (camera_number == 7) {
+			crate_camera = &cmra;
+		}
+		if (camera_number == 8) {
+			ship_camera = &cmra;
+		}
+		if (camera_number == 9) {
+			oar_camera = &cmra;
+		}
+		if (camera_number == 10) {
+			coastguard_camera = &cmra;
+		}
+		if (camera_number == 11) {
+			forest_camera = &cmra;
+		}
 		camera_number++;
 	}
 	camera = prison_camera;
@@ -110,12 +131,27 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			current_choice = Choice::RIGHT;
 			return true;
 		}
+		else if (evt.key.keysym.sym == SDLK_r) {
+			current_location = Location::PRISON;
+			camera = prison_camera;
+			message = IN_PRISON_MESSAGE;
+			left_choice = DIG_TUNNEL_CHOICE;
+			right_choice = CALL_GUARD_CHOICE;
+			result = DEFAULT_RESULT;
+			past_guard = false;
+			buddy = false;
+			injured = false;
+			time_to_crate = 0.0f;
+			elapsed_time = 0.0f;
+			items.clear();
+		}
 	}
 
 	return false;
 }
 
 void PlayMode::update(float elapsed) {
+	elapsed_time += elapsed;
 	if (current_choice == Choice::NONE) {
 		return;
 	}
@@ -168,7 +204,6 @@ void PlayMode::update(float elapsed) {
 				left_choice = TURN_LEFT_CHOICE;
 				right_choice = TURN_RIGHT_CHOICE;
 				result = KNOCK_OUT_RESULT;
-				items.erase(Item::ROCK);
 			} else if (right_choice == TRY_LEFT_CHOICE) {
 				current_location = Location::TABLE;
 				camera = table_camera;
@@ -197,8 +232,10 @@ void PlayMode::update(float elapsed) {
 		}
 		break;
 	case TABLE:
-		items.insert(Item::SWORD);
-		items.insert(Item::SHOVEL);
+		if (items.find(Item::SWORD) == items.end()) {
+			items.insert(Item::SWORD);
+			items.insert(Item::SHOVEL);
+		}
 		if (current_choice == Choice::LEFT) {
 			current_location = Location::GUARDS;
 			camera = guard_camera;
@@ -210,21 +247,20 @@ void PlayMode::update(float elapsed) {
 			current_location = Location::COAST;
 			camera = coast_camera;
 			message = COAST_MESSAGE;
-			left_choice = NO_CHOICE;
-			right_choice = NO_CHOICE;
+			left_choice = TURN_LEFT_CHOICE;
+			right_choice = TURN_RIGHT_CHOICE;
 			result = LEFT_CELL_RESULT;
-			items.erase(Item::SHOVEL);
 		}
 		break;
 	case GUARDS:
-		if (current_choice == Choice::LEFT) {
+		if (current_choice == Choice::LEFT && left_choice != NO_CHOICE) {
 			if (items.find(Item::SWORD) != items.end()) {
 				injured = true;
 				current_location = Location::COAST;
 				camera = coast_camera;
 				message = COAST_MESSAGE;
-				left_choice = NO_CHOICE;
-				right_choice = NO_CHOICE;
+				left_choice = TURN_LEFT_CHOICE;
+				right_choice = TURN_RIGHT_CHOICE;
 				result = FIGHT_SWORD_RESULT;
 			} else {
 				message = NO_CHOICE;
@@ -238,18 +274,16 @@ void PlayMode::update(float elapsed) {
 					current_location = Location::COAST;
 					camera = coast_camera;
 					message = COAST_MESSAGE;
-					left_choice = NO_CHOICE;
-					right_choice = NO_CHOICE;
+					left_choice = TURN_LEFT_CHOICE;
+					right_choice = TURN_RIGHT_CHOICE;
 					result = DISTRACTION_SHOVEL_RESULT;
-					items.erase(Item::SHOVEL);
 				} else if (items.find(Item::ROCK) != items.end()) {
 					current_location = Location::COAST;
 					camera = coast_camera;
 					message = COAST_MESSAGE;
-					left_choice = NO_CHOICE;
-					right_choice = NO_CHOICE;
+					left_choice = TURN_LEFT_CHOICE;
+					right_choice = TURN_RIGHT_CHOICE;
 					result = DISTRACTION_ROCK_RESULT;
-					items.erase(Item::ROCK);
 				} else {
 					right_choice = CELL_RETURN_CHOICE;
 					result = NO_ITEM_RESULT;
@@ -263,6 +297,157 @@ void PlayMode::update(float elapsed) {
 				result = RIGHT_CELL_RESULT;
 			}
 		}
+		break;
+	case COAST:
+		if (current_choice == Choice::LEFT) {
+			current_location = Location::CRATE;
+			camera = crate_camera;
+			message = CRATE_MESSAGE;
+			left_choice = DEEPER_CHOICE;
+			right_choice = GO_BACK_CHOICE;
+			if (time_to_crate == 0.0f) {
+				time_to_crate = elapsed_time;
+				result = CRATE_TTC_RESULT + std::to_string((size_t)time_to_crate) + " seconds.";
+			} else {
+				result = CRATE_RESULT;
+			}
+		} else if (current_choice == Choice::RIGHT) {
+			current_location = Location::FOREST;
+			camera = forest_camera;
+			message = FOREST_MESSAGE;
+			left_choice = DEEPER_CHOICE;
+			right_choice = GO_BACK_CHOICE;
+			if (buddy) {
+				result = FOREST_RESULT;
+			} else if (items.find(Item::KEY) != items.end()) {
+				buddy = true;
+				result = FOREST_CREW_FREE_RESULT;
+			} else {
+				result = FOREST_CREW_LOCKED_RESULT;
+			}
+		} 
+		break;
+	case CRATE:
+		if (items.find(Item::KEY) == items.end()) {
+			items.insert(Item::KEY);
+		}
+		if (current_choice == Choice::LEFT) {
+			current_location = Location::COASTGUARDS;
+			camera = coastguard_camera;
+			message = NEAR_GUARDS_MESSAGE;
+			left_choice = CHARGE_CHOICE;
+			right_choice = GO_BACK_CHOICE;
+			result = RIGHT_TURN_RESULT;
+		} else if (current_choice == Choice::RIGHT) {
+			current_location = Location::COAST;
+			camera = coast_camera;
+			message = COAST_MESSAGE;
+			left_choice = TURN_LEFT_CHOICE;
+			right_choice = TURN_RIGHT_CHOICE;
+			result = COAST_RETURN_RESULT;
+		}
+		break;
+	case COASTGUARDS:
+		if (current_choice == Choice::LEFT && left_choice != NO_CHOICE) {
+			left_choice = NO_CHOICE;
+			right_choice = NO_CHOICE;
+			if (items.find(Item::SWORD) != items.end() && (buddy || !injured)) {
+				current_location = Location::SHIP;
+				camera = ship_camera;
+				message = SHIP_MESSAGE;
+				result = SHIP_RESULT;
+			} else {
+				result = FIGHT_NO_SWORD_RESULT;
+			}
+		} else if (current_choice == Choice::RIGHT && right_choice != NO_CHOICE) {
+			current_location = Location::CRATE;
+			camera = crate_camera;
+			message = CRATE_MESSAGE;
+			left_choice = DEEPER_CHOICE;
+			right_choice = GO_BACK_CHOICE;
+			if (time_to_crate == 0.0f) {
+				time_to_crate = elapsed_time;
+				result = CRATE_TTC_RESULT + std::to_string((size_t)time_to_crate) + " seconds.";
+			} else {
+				result = CRATE_RESULT;
+			}
+		}
+		break;
+	case FOREST:
+		if (current_choice == Choice::LEFT) {
+			current_location = Location::DEEPWOODS;
+			camera = deeper_forest_camera;
+			message = DEEPWOODS_MESSAGE;
+			left_choice = TURN_LEFT_CHOICE;
+			right_choice = TURN_RIGHT_CHOICE;
+			result = DEEPER_RESULT;
+		} else if (current_choice == Choice::RIGHT) {
+			current_location = Location::COAST;
+			camera = coast_camera;
+			message = COAST_MESSAGE;
+			left_choice = TURN_LEFT_CHOICE;
+			right_choice = TURN_RIGHT_CHOICE;
+			result = COAST_RETURN_RESULT;
+		}
+		break;
+	case DEEPWOODS:
+		if (current_choice == Choice::LEFT) {
+			current_location = Location::OAR_LOC;
+			camera = oar_camera;
+			message = OAR_MESSAGE;
+			left_choice = GIVE_UP_CHOICE;
+			right_choice = GO_BACK_CHOICE;
+			if (items.find(Item::OAR) == items.end()) {
+				items.insert(Item::OAR);
+				result = FOUND_OAR_RESULT;
+			} else {
+				result = NOTHING_ELSE_RESULT;
+			}
+		} else if (current_choice == Choice::RIGHT) {
+			current_location = Location::RAFT;
+			camera = raft_camera;
+			if (items.find(Item::OAR) != items.end()) {
+				message = RAFT_WIN;
+				left_choice = NO_CHOICE;
+				right_choice = NO_CHOICE;
+				result = RAFT_OAR_RESULT;
+			} else {
+				message = RAFT_MESSAGE;
+				left_choice = GIVE_UP_CHOICE;
+				right_choice = GO_BACK_CHOICE;
+				result = RAFT_NO_OAR_RESULT;
+			}
+		}
+		break;
+	case OAR_LOC:
+		if (current_choice == Choice::LEFT && left_choice != NO_CHOICE) {
+			left_choice = NO_CHOICE;
+			right_choice = NO_CHOICE;
+			result = GIVE_UP_RESULT;
+		} else if (current_choice == Choice::RIGHT && right_choice != NO_CHOICE) {
+			current_location = Location::DEEPWOODS;
+			camera = deeper_forest_camera;
+			message = DEEPWOODS_MESSAGE;
+			left_choice = TURN_LEFT_CHOICE;
+			right_choice = TURN_RIGHT_CHOICE;
+			result = DEEP_RETURN_RESULT;
+		}
+		break;
+	case RAFT:
+		if (current_choice == Choice::LEFT && left_choice != NO_CHOICE) {
+			left_choice = NO_CHOICE;
+			right_choice = NO_CHOICE;
+			result = GIVE_UP_RESULT;
+		} else if (current_choice == Choice::RIGHT && right_choice != NO_CHOICE) {
+			current_location = Location::DEEPWOODS;
+			camera = deeper_forest_camera;
+			message = DEEPWOODS_MESSAGE;
+			left_choice = TURN_LEFT_CHOICE;
+			right_choice = TURN_RIGHT_CHOICE;
+			result = DEEP_RETURN_RESULT;
+		}
+		break;
+	case SHIP:
 		break;
 	}
 	current_choice = Choice::NONE;

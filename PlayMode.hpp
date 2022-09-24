@@ -31,6 +31,13 @@ struct PlayMode : Mode {
 	Scene::Camera* table_camera = nullptr;
 	Scene::Camera* dungeon_camera = nullptr;
 	Scene::Camera* guard_camera = nullptr;
+	Scene::Camera* crate_camera = nullptr;
+	Scene::Camera* forest_camera = nullptr;
+	Scene::Camera* deeper_forest_camera = nullptr;
+	Scene::Camera* coastguard_camera = nullptr;
+	Scene::Camera* oar_camera = nullptr;
+	Scene::Camera* raft_camera = nullptr;
+	Scene::Camera* ship_camera = nullptr;
 	Scene::Camera* camera = nullptr;
 
 	// Text shaping
@@ -45,6 +52,13 @@ struct PlayMode : Mode {
 		TABLE,
 		GUARDS,
 		COAST,
+		COASTGUARDS,
+		CRATE,
+		SHIP,
+		FOREST,
+		DEEPWOODS,
+		OAR_LOC,
+		RAFT
 	} current_location;
 
 	enum Choice {
@@ -56,7 +70,9 @@ struct PlayMode : Mode {
 	enum Item {
 		SWORD,
 		ROCK,
-		SHOVEL
+		SHOVEL,
+		OAR,
+		KEY
 	};
 
 	std::set<Item> items;
@@ -66,18 +82,30 @@ struct PlayMode : Mode {
 	std::string left_choice;
 	std::string right_choice;
 
+	float time_to_crate = 0.0f;
+	float elapsed_time = 0.0f;
+
 	bool past_guard = false;
 	bool injured = false;
+	bool buddy = false;
 
 	// Location messages
 	std::string IN_PRISON_MESSAGE = "You are in the prison. What do you do to escape?";
 	std::string AT_TABLE_MESSAGE = "You are at the table. Where do you go?";
-	std::string NEAR_GUARDS_MESSAGE = "You are near the guards. What do you do?"; 
+	std::string NEAR_GUARDS_MESSAGE = "You are near the guards. What do you do?";
 	std::string DUNGEON_MESSAGE = "You are in the dungeon. Where do you go?";
 	std::string COAST_MESSAGE = "You are on the coast. What do you do?";
+	std::string CRATE_MESSAGE = "You are by the crate. Where to next?";
+	std::string FOREST_MESSAGE = "You are in the forest. What do you do?";
+	std::string DEEPWOODS_MESSAGE = "You are deep in the forest. Where do you go?";
+	std::string OAR_MESSAGE = "You are by an oar. Where to next?";
+	std::string RAFT_MESSAGE = "You are by the raft but have nothing to sail with. What do you do?";
+	std::string RAFT_WIN = "You are by the raft and have an oar. Congratulations!";
+	std::string SHIP_MESSAGE = "You have found a ship to escape on. Congratulations!";
 
 	// Choices
 	std::string GIVE_UP_CHOICE = "Give up.";
+	std::string GO_BACK_CHOICE = "Go back.";
 	std::string NO_CHOICE = "";
 	// Left choices
 	std::string DIG_TUNNEL_CHOICE = "Dig a tunnel.";
@@ -86,6 +114,7 @@ struct PlayMode : Mode {
 	std::string TURN_LEFT_CHOICE = "Turn left.";
 	std::string TRY_RIGHT_CHOICE = "Go right this time.";
 	std::string CHARGE_CHOICE = "Charge!";
+	std::string DEEPER_CHOICE = "Keep going deeper.";
 
 	// Right choices
 	std::string CALL_GUARD_CHOICE = "Call the guard.";
@@ -99,6 +128,7 @@ struct PlayMode : Mode {
 	// Results
 	std::string GIVE_UP_RESULT = "It's a tough game for sure! Game over.";
 	std::string DEFAULT_RESULT = "Good luck!";
+	// Part 1
 	std::string NO_ITEM_RESULT = "With what? Nice try.";
 	std::string LOOK_AROUND_RESULT = "You see a rock and pick it up.";
 	std::string CALL_GUARD_RESULT = "The guard approaches.";
@@ -112,4 +142,18 @@ struct PlayMode : Mode {
 	std::string DISTRACTION_ROCK_RESULT = "You throw the rock and sneak by the guards.";
 	std::string FIGHT_NO_SWORD_RESULT = "You die. Game over.";
 	std::string FIGHT_SWORD_RESULT = "You use the sword to beat them, but now you're injured.";
+	// Part 2
+	std::string CRATE_TTC_RESULT = "You see a crate! You take the key inside. Time to crate ";
+	std::string CRATE_RESULT = "You've returned to the crate.";
+	std::string DEEPER_RESULT = "There is no turning back now.";
+	std::string FOUND_OAR_RESULT = "You see and pick up an oar.";
+	std::string NOTHING_ELSE_RESULT = "There is nothing to see here.";
+	std::string SHIP_RESULT = "You beat them and reach the ship.";
+	std::string FOREST_RESULT = "You are in a forest.";
+	std::string FOREST_CREW_LOCKED_RESULT = "Your crewmate is locked up.";
+	std::string FOREST_CREW_FREE_RESULT = "Your crewmate is locked up. You use your key to free him.";
+	std::string COAST_RETURN_RESULT = "You are back on the coast.";
+	std::string DEEP_RETURN_RESULT = "You are back in the deep woods.";
+	std::string RAFT_NO_OAR_RESULT = "You have found a raft but have nothing to sail with.";
+	std::string RAFT_OAR_RESULT = "You have found a raft and use the oar.";
 };
