@@ -20,7 +20,7 @@ struct PlayMode : Mode {
 	virtual bool handle_event(SDL_Event const &, glm::uvec2 const &window_size) override;
 	virtual void update(float elapsed) override;
 	virtual void draw(glm::uvec2 const &drawable_size) override;
-	void render_at(std::string txt, uint32_t x, uint32_t y);
+	void render_at(std::string txt, float x, float y, glm::uvec2 const& drawable_size);
 
 	//----- game state -----
 
@@ -44,6 +44,7 @@ struct PlayMode : Mode {
 	FT_Library ft_library;
 	FT_Face ft_face;
 	hb_font_t* hb_font;
+	hb_buffer_t* hb_buffer;
 
 	// Game state
 	enum Location {

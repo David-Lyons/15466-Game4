@@ -7,7 +7,7 @@ Design: A choose-your-own adventure story about a pirate in a desperate situatio
 Text Drawing: The text is rendered at runtime. When the game boots, I initialize the font.
 Based on the whatever state the game is in, I decide what text should be displayed, and then
 I use Harfbuzz and FreeType to shape and render the glyphs. I then use OpenGL to draw this text
-on a texture and display it.
+with each glyph on its own texture and display it.
 
 Choices: I do a modification of a state machine. I have a Location enum for where you are and an
 items list for what Item objects you have, as well as a few booleans. I store four messages. One is
@@ -40,7 +40,7 @@ https://freetype.org/freetype2/docs/tutorial/step1.html
 https://harfbuzz.github.io/
 https://freetype.org/freetype2/docs/reference/index.html
 
-Learned how to go from FreeType to OpenGL from this tutorial:
+Learned how to go from FreeType to OpenGL (and used some code) from this tutorial:
 https://learnopengl.com/In-Practice/Text-Rendering
 
 Font PT Serif from ParaType licensed under the Open Font License.

@@ -1,6 +1,7 @@
 #include "PlayMode.hpp"
 
 #include "LitColorTextureProgram.hpp"
+#include "ColorTextureProgram.hpp"
 
 #include "DrawLines.hpp"
 #include "Mesh.hpp"
@@ -36,26 +37,81 @@ Load< Scene > sets(LoadTagDefault, []() -> Scene const * {
 	});
 });
 
-void PlayMode::render_at(std::string txt, uint32_t x, uint32_t y) {
-	hb_buffer_t* hb_buffer;
-	hb_buffer = hb_buffer_create();
+void PlayMode::render_at(std::string txt, float x, float y, glm::uvec2 const& drawable_size) {
+	// Harfbuzz code based on https://github.com/harfbuzz/harfbuzz-tutorial/blob/master/hello-harfbuzz-freetype.c
+	hb_buffer_clear_contents(hb_buffer);
 	hb_buffer_add_utf8(hb_buffer, txt.c_str(), -1, 0, -1);
 	hb_buffer_guess_segment_properties(hb_buffer);
 	hb_shape(hb_font, hb_buffer, NULL, 0);
 
 	glm::vec2 cursor = glm::vec2(x, y);
-	unsigned int len = hb_buffer_get_length(hb_buffer);
+	uint32_t len = hb_buffer_get_length(hb_buffer);
 	hb_glyph_info_t* glyph_infos = hb_buffer_get_glyph_infos(hb_buffer, NULL);
 	hb_glyph_position_t* glyph_positions = hb_buffer_get_glyph_positions(hb_buffer, NULL);
 
+	// GL code based on https://learnopengl.com/In-Practice/Text-Rendering
+	GLuint texture; 
+	unsigned int VAO, VBO;
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	glGenVertexArrays(1, &VAO);
+	glGenBuffers(1, &VBO);
+	glBindVertexArray(VAO);
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+
+	glUseProgram(color_texture_program->program);
+	glUniform3f(color_texture_program->textColor_vec3, 0.2f, 0.8f, 0.6f);
+	glActiveTexture(GL_TEXTURE0);
+	glBindVertexArray(VAO);
+	glm::mat4 projection = glm::ortho(0.0f, (float)drawable_size.x, 0.0f, (float)drawable_size.y);
+	glUniformMatrix4fv(color_texture_program->projection_mat4, 1, GL_FALSE, &projection[0][0]);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
 	for (uint32_t i = 0; i < len; i++) {
+		// FT code based on https://freetype.org/freetype2/docs/tutorial/step1.html
 		hb_codepoint_t glyph_index = glyph_infos[i].codepoint;
 		FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_DEFAULT);
 		FT_Render_Glyph(ft_face->glyph, FT_RENDER_MODE_NORMAL);
-		// Somehow draw this to the screen at cursor+xoffset, cursor+yoffset
-		// Potentially line wrap if cursor.x is too big
-		cursor += glm::vec2(glyph_positions[i].x_advance, glyph_positions[i].y_advance);
+		
+		// From GL tutorial
+		glGenTextures(1, &texture);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, ft_face->glyph->bitmap.width, ft_face->glyph->bitmap.rows, 
+			0, GL_RED, GL_UNSIGNED_BYTE, ft_face->glyph->bitmap.buffer);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+		float xpos = cursor.x + ft_face->glyph->bitmap_left;
+		float ypos = cursor.y + ft_face->glyph->bitmap_top - ft_face->glyph->bitmap.rows;
+		float w = (float)ft_face->glyph->bitmap.width;
+		float h = (float)ft_face->glyph->bitmap.rows;
+		float vertices[6][4] = {
+			{ xpos,     ypos + h,   0.0f, 0.0f },
+			{ xpos,     ypos,       0.0f, 1.0f },
+			{ xpos + w, ypos,       1.0f, 1.0f },
+
+			{ xpos,     ypos + h,   0.0f, 0.0f },
+			{ xpos + w, ypos,       1.0f, 1.0f },
+			{ xpos + w, ypos + h,   1.0f, 0.0f }
+		};
+
+		glBindBuffer(GL_ARRAY_BUFFER, VBO);
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		cursor += glm::vec2(glyph_positions[i].x_advance >> 6, glyph_positions[i].y_advance >> 6);
 	}
+
+	glBindVertexArray(0);
+	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 PlayMode::PlayMode() : scene(*sets) {
@@ -102,9 +158,13 @@ PlayMode::PlayMode() : scene(*sets) {
 	}
 	camera = prison_camera;
 
+	// From Harfbuzz tutorial
 	FT_Init_FreeType(&ft_library);
 	FT_New_Face(ft_library, data_path("PTSerif-Italic.ttf").c_str(), 0, &ft_face);
+	// Help from Sarah Pethani debugging my font size (originally I didn't multiply by 64)
+	FT_Set_Char_Size(ft_face, 36 * 64, 36 * 64, 0, 0);
 	hb_font = hb_ft_font_create(ft_face, NULL);
+	hb_buffer = hb_buffer_create();
 
 	current_choice = Choice::NONE;
 	current_location = Location::PRISON;
@@ -116,6 +176,9 @@ PlayMode::PlayMode() : scene(*sets) {
 }
 
 PlayMode::~PlayMode() {
+	FT_Done_FreeType(ft_library);
+	FT_Done_Face(ft_face);
+	hb_buffer_destroy(hb_buffer);
 }
 
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
@@ -472,35 +535,11 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	glDepthFunc(GL_LESS); //this is the default depth comparison function, but FYI you can change it.
 
 	scene.draw(*camera);
-	render_at(message, 0, 0);
 
-	{ //use DrawLines to overlay some text:
-		glDisable(GL_DEPTH_TEST);
-		float aspect = float(drawable_size.x) / float(drawable_size.y);
-		DrawLines lines(glm::mat4(
-			1.0f / aspect, 0.0f, 0.0f, 0.0f,
-			0.0f, 1.0f, 0.0f, 0.0f,
-			0.0f, 0.0f, 1.0f, 0.0f,
-			0.0f, 0.0f, 0.0f, 1.0f
-		));
-
-		constexpr float H = 0.1f;
-		lines.draw_text(message,
-			glm::vec3(-aspect + 0.1f * H, -1.0 + 0.1f * H + 1200.0f / drawable_size.y, 0.0),
-			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
-			glm::u8vec4(0xff, 0xff, 0xff, 0xff)); 
-		lines.draw_text(left_choice,
-				glm::vec3(-aspect + 0.1f * H, -1.0 + 0.1f * H + 1000.0f / drawable_size.y, 0.0),
-				glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
-				glm::u8vec4(0xff, 0xff, 0xff, 0xff));
-		lines.draw_text(right_choice,
-			glm::vec3(-aspect + 0.1f * H + 1000.0f / drawable_size.x, -1.0 + 0.1f * H + 1000.0f / drawable_size.y, 0.0),
-			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
-			glm::u8vec4(0xff, 0xff, 0xff, 0xff));
-		lines.draw_text(result,
-			glm::vec3(-aspect + 0.1f * H, -1.0 + 0.1f * H + 100.0f / drawable_size.y, 0.0),
-			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
-			glm::u8vec4(0xff, 0xff, 0xff, 0xff));
-	}
+	glDisable(GL_DEPTH_TEST);
+	render_at(message, drawable_size.x / 10.0f, drawable_size.y * 5.0f / 6.0f, drawable_size);
+	render_at(left_choice, drawable_size.x / 10.0f, drawable_size.y * 4.0f / 6.0f, drawable_size);
+	render_at(right_choice, drawable_size.x / 2.0f, drawable_size.y * 4.0f / 6.0f, drawable_size);
+	render_at(result, drawable_size.x / 10.0f, drawable_size.x / 8.0f, drawable_size);
 	GL_ERRORS();
 }
