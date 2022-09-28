@@ -80,14 +80,19 @@ void PlayMode::render_at(std::string txt, float x, float y, glm::uvec2 const& dr
 		FT_Render_Glyph(ft_face->glyph, FT_RENDER_MODE_NORMAL);
 		
 		// From GL tutorial
-		glGenTextures(1, &texture);
-		glBindTexture(GL_TEXTURE_2D, texture);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, ft_face->glyph->bitmap.width, ft_face->glyph->bitmap.rows, 
-			0, GL_RED, GL_UNSIGNED_BYTE, ft_face->glyph->bitmap.buffer);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		try {
+			texture = texture_map.at(glyph_index);
+			glBindTexture(GL_TEXTURE_2D, texture);
+		} catch (std::out_of_range) {
+			glGenTextures(1, &texture);
+			glBindTexture(GL_TEXTURE_2D, texture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, ft_face->glyph->bitmap.width, ft_face->glyph->bitmap.rows,
+				0, GL_RED, GL_UNSIGNED_BYTE, ft_face->glyph->bitmap.buffer);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		}
 
 		float xpos = cursor.x + ft_face->glyph->bitmap_left;
 		float ypos = cursor.y + ft_face->glyph->bitmap_top - ft_face->glyph->bitmap.rows;

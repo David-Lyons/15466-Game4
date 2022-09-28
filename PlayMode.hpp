@@ -9,6 +9,7 @@
 #include <freetype/freetype.h>
 
 #include <vector>
+#include <unordered_map>
 #include <set>
 #include <deque>
 
@@ -45,6 +46,7 @@ struct PlayMode : Mode {
 	FT_Face ft_face;
 	hb_font_t* hb_font;
 	hb_buffer_t* hb_buffer;
+	std::unordered_map<hb_codepoint_t, GLuint> texture_map;
 
 	// Game state
 	enum Location {
