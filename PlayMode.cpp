@@ -83,7 +83,7 @@ void PlayMode::render_at(std::string txt, float x, float y, glm::uvec2 const& dr
 		try {
 			texture = texture_map.at(glyph_index);
 			glBindTexture(GL_TEXTURE_2D, texture);
-		} catch (std::out_of_range) {
+		} catch (std::out_of_range&) {
 			glGenTextures(1, &texture);
 			glBindTexture(GL_TEXTURE_2D, texture);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, ft_face->glyph->bitmap.width, ft_face->glyph->bitmap.rows,
