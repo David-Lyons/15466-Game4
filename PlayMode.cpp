@@ -181,9 +181,6 @@ PlayMode::PlayMode() : scene(*sets) {
 }
 
 PlayMode::~PlayMode() {
-	FT_Done_FreeType(ft_library);
-	FT_Done_Face(ft_face);
-	hb_buffer_destroy(hb_buffer);
 }
 
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size) {
